@@ -90,8 +90,15 @@ class PsList(interfaces.plugins.PluginInterface, timeliner.TimeLinerInterface):
                 offset=peb.ImageBaseAddress,
                 layer_name=proc_layer_name,
             )
+
+            imagefilename = proc.ImageFileName.cast(
+                "string",
+                max_length=proc.ImageFileName.vol.count,
+                errors="replace",
+            )
+
             file_handle = open_method(
-                f"pid.{proc.UniqueProcessId}.{peb.ImageBaseAddress:#x}.dmp"
+                f"pid.{proc.UniqueProcessId}.{imagefilename}.{peb.ImageBaseAddress:#x}.dmp"
             )
             for offset, data in dos_header.reconstruct():
                 file_handle.seek(offset)
