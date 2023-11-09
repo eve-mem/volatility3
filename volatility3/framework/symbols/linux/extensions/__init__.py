@@ -199,22 +199,47 @@ class task_struct(generic.GenericIntelProcess):
         )
 
     def get_process_memory_sections(
-        self, heap_only: bool = False
+        self, heap_only: bool = False, crazy_mode=False
     ) -> Generator[Tuple[int, int], None, None]:
         """Returns a list of sections based on the memory manager's view of
         this task's virtual memory."""
-        for vma in self.mm.get_vma_iter():
-            start = int(vma.vm_start)
-            end = int(vma.vm_end)
+        if crazy_mode == True:
+            # if we can't use mm to find the mappings, our only chance is the page table as
+            # the private mem for this task will contain the heap, it might just be crazy
+            # enough to work...!
 
-            if heap_only and not (start <= self.mm.brk and end >= self.mm.start_brk):
-                continue
-            else:
-                # FIXME: Check if this actually needs to be printed out or not
-                vollog.info(
-                    f"adding vma: {start:x} {self.mm.brk:x} | {end:x} {self.mm.start_brk:x}"
-                )
-            yield (start, end - start)
+            proc_layer_name = self.add_process_layer()
+            proc_layer = self._context.layers[proc_layer_name]
+            for start, size, _, _, _ in proc_layer.mapping(
+                0, (1 << 48) - 1, ignore_errors=True
+            ):
+                end = start + size
+                if heap_only and not (
+                    start <= self.mm.brk and end >= self.mm.start_brk
+                ):
+                    continue
+                else:
+                    # FIXME: Check if this actually needs to be printed out or not
+                    vollog.info(
+                        f"adding vma: {start:x} {self.mm.brk:x} | {end:x} {self.mm.start_brk:x}"
+                    )
+                yield (start, end - start)
+
+        else:
+            for vma in self.mm.get_vma_iter():
+                start = int(vma.vm_start)
+                end = int(vma.vm_end)
+
+                if heap_only and not (
+                    start <= self.mm.brk and end >= self.mm.start_brk
+                ):
+                    continue
+                else:
+                    # FIXME: Check if this actually needs to be printed out or not
+                    vollog.info(
+                        f"adding vma: {start:x} {self.mm.brk:x} | {end:x} {self.mm.start_brk:x}"
+                    )
+                yield (start, end - start)
 
     @property
     def is_kernel_thread(self) -> bool:

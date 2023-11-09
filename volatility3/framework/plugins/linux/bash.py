@@ -79,7 +79,9 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
             for address in proc_layer.scan(
                 self.context,
                 scanners.BytesScanner(b"#"),
-                sections=task.get_process_memory_sections(heap_only=True),
+                sections=task.get_process_memory_sections(
+                    heap_only=True, crazy_mode=True
+                ),
             ):
                 bang_addrs.append(struct.pack(pack_format, address))
 
