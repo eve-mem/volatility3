@@ -9,14 +9,14 @@ from volatility3.framework import interfaces, renderers
 from volatility3.framework.configuration import requirements
 from volatility3.framework.renderers import format_hints
 from volatility3.framework.layers import scanners
-from volatility3.plugins.windows import pslist
+from volatility3.plugins.linux import pslist
 
 
 class Strings(interfaces.plugins.PluginInterface):
     """Mimics the strings utility."""
 
     _required_framework_version = (2, 4, 0)
-    _version = (2, 0, 0)
+    _version = (1, 0, 0)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -41,17 +41,14 @@ class Strings(interfaces.plugins.PluginInterface):
     def _generator(self):
         # filter based on the pid option if provided
         filter_func = pslist.PsList.create_pid_filter(self.config.get("pid", None))
-
-        kernel = self.context.modules[self.config["kernel"]]
-        for proc in pslist.PsList.list_processes(
+        for task in pslist.PsList.list_tasks(
             context=self.context,
-            layer_name=kernel.layer_name,
-            symbol_table=kernel.symbol_table_name,
+            vmlinux_module_name=self.config["kernel"],
             filter_func=filter_func,
         ):
             # attempt to create a process layer for each task and skip those
             # that cannot (e.g. kernel threads)
-            proc_layer_name = proc.add_process_layer()
+            proc_layer_name = task.add_process_layer()
             if not proc_layer_name:
                 continue
 
@@ -74,7 +71,7 @@ class Strings(interfaces.plugins.PluginInterface):
                 result = data[start:end]
                 yield 0, (
                     format_hints.Hex(offset),
-                    proc.UniqueProcessId,
+                    task.tgid,
                     str(result, encoding="latin-1", errors="?"),
                 )
 
