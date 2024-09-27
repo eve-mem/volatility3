@@ -21,7 +21,7 @@ from volatility3.plugins.linux import pslist
 class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
     """Recovers bash command history from memory."""
 
-    _required_framework_version = (2, 0, 0)
+    _required_framework_version = (2, 0, 1)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -106,9 +106,10 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
                         history_entries.append(hist)
 
             for hist in sorted(history_entries, key=lambda x: x.get_time_as_integer()):
+                user_pid = task.tgid
                 yield (
                     0,
-                    (task.pid, task_name, hist.get_time_object(), hist.get_command()),
+                    (user_pid, task_name, hist.get_time_object(), hist.get_command()),
                 )
 
     def run(self):

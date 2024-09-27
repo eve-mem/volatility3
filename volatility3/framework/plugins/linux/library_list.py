@@ -22,7 +22,7 @@ class LibraryList(interfaces.plugins.PluginInterface):
 
     _required_framework_version = (2, 0, 0)
 
-    _version = (1, 0, 0)
+    _version = (1, 0, 1)
 
     @classmethod
     def get_requirements(cls):
@@ -140,7 +140,8 @@ class LibraryList(interfaces.plugins.PluginInterface):
         for task in tasks:
             task_name = utility.array_to_string(task.comm)
             for linkmap_addr, linkmap_name in self._get_task_libraries(task):
-                yield task_name, task.tgid, linkmap_addr, linkmap_name
+                user_pid = task.tgid
+                yield task_name, user_pid, linkmap_addr, linkmap_name
 
     def _format_fields(self, fields):
         task_name, task_pid, addr, name = fields

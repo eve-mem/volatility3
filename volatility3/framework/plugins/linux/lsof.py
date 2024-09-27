@@ -83,14 +83,14 @@ class Lsof(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 linuxutils_symbol_table = task.vol.type_name.split(constants.BANG)[0]
 
             task_comm = utility.array_to_string(task.comm)
-            pid = int(task.pid)
+            user_pid = int(task.tgid)
 
             fd_generator = linux.LinuxUtilities.files_descriptors_for_process(
                 context, linuxutils_symbol_table, task
             )
 
             for fd_fields in fd_generator:
-                yield pid, task_comm, task, fd_fields
+                yield user_pid, task_comm, task, fd_fields
 
     @classmethod
     def list_fds_and_inodes(

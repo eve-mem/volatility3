@@ -25,7 +25,7 @@ class Elfs(plugins.PluginInterface):
     """Lists all memory mapped ELF files for all processes."""
 
     _required_framework_version = (2, 0, 0)
-    _version = (2, 0, 1)
+    _version = (2, 0, 2)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -169,11 +169,11 @@ class Elfs(plugins.PluginInterface):
                     if file_handle:
                         file_handle.close()
                         file_output = str(file_handle.preferred_filename)
-
+                user_pid = task.tgid
                 yield (
                     0,
                     (
-                        task.pid,
+                        user_pid,
                         name,
                         format_hints.Hex(vma.vm_start),
                         format_hints.Hex(vma.vm_end),

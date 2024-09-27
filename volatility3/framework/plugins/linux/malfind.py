@@ -85,11 +85,11 @@ class Malfind(interfaces.plugins.PluginInterface):
                 disasm = interfaces.renderers.Disassembly(
                     data, vma.vm_start, architecture
                 )
-
+                user_pid = task.tgid
                 yield (
                     0,
                     (
-                        task.pid,
+                        user_pid,
                         process_name,
                         format_hints.Hex(vma.vm_start),
                         format_hints.Hex(vma.vm_end),

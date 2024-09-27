@@ -43,19 +43,19 @@ class Envars(plugins.PluginInterface):
 
         # walk the process list and return the envars
         for task in tasks:
-            pid = task.pid
+            user_pid = task.tgid
 
             # get process name as string
             name = utility.array_to_string(task.comm)
 
             # try and get task parent
             try:
-                ppid = task.parent.pid
+                user_ppid = task.parent.pid
             except exceptions.InvalidAddressException:
                 vollog.debug(
-                    f"Unable to read parent pid for task {pid} {name}, setting ppid to 0."
+                    f"Unable to read parent pid for task {user_pid} {name}, setting ppid to 0."
                 )
-                ppid = 0
+                user_ppid = 0
 
             # kernel threads never have an mm as they do not have userland mappings
             try:
@@ -63,7 +63,7 @@ class Envars(plugins.PluginInterface):
             except exceptions.InvalidAddressException:
                 # no mm so cannot get envars
                 vollog.debug(
-                    f"Unable to access mm for task {pid} {name} it is likely a kernel thread, will not extract any envars."
+                    f"Unable to access mm for task {user_pid} {name} it is likely a kernel thread, will not extract any envars."
                 )
                 mm = None
                 continue
@@ -74,7 +74,7 @@ class Envars(plugins.PluginInterface):
                 proc_layer_name = task.add_process_layer()
                 if proc_layer_name is None:
                     vollog.debug(
-                        f"Unable to construct process layer for task {pid} {name}, will not extract any envars."
+                        f"Unable to construct process layer for task {user_pid} {name}, will not extract any envars."
                     )
                     continue
                 proc_layer = self.context.layers[proc_layer_name]
@@ -83,7 +83,7 @@ class Envars(plugins.PluginInterface):
                 envars_size = task.mm.env_end - task.mm.env_start
                 if not (0 < envars_size <= 8192):
                     vollog.debug(
-                        f"Task {pid} {name} appears to have envars of size {envars_size} bytes which fails the sanity checking, will not extract any envars."
+                        f"Task {user_pid} {name} appears to have envars of size {envars_size} bytes which fails the sanity checking, will not extract any envars."
                     )
                     continue
 
@@ -92,7 +92,7 @@ class Envars(plugins.PluginInterface):
                     envar_data = proc_layer.read(task.mm.env_start, envars_size)
                 except exceptions.InvalidAddressException:
                     vollog.debug(
-                        f"Unable to read full envars for {pid} {name} starting at virtual offset {hex(task.mm.env_start)} for {envars_size} bytes, will not extract any envars."
+                        f"Unable to read full envars for {user_pid} {name} starting at virtual offset {hex(task.mm.env_start)} for {envars_size} bytes, will not extract any envars."
                     )
                     continue
 
@@ -103,10 +103,10 @@ class Envars(plugins.PluginInterface):
                         key, value = envar_pair.decode().split("=", 1)
                     except ValueError:
                         vollog.debug(
-                            f"Unable to extract envars for {pid} {name} starting at virtual offset {hex(task.mm.env_start)}, they don't appear to be '=' separated"
+                            f"Unable to extract envars for {user_pid} {name} starting at virtual offset {hex(task.mm.env_start)}, they don't appear to be '=' separated"
                         )
                         continue
-                    yield (0, (pid, ppid, name, key, value))
+                    yield (0, (user_pid, user_ppid, name, key, value))
 
     def run(self):
         filter_func = pslist.PsList.create_pid_filter(self.config.get("pid", None))

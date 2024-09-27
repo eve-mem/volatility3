@@ -96,18 +96,18 @@ class PsAux(plugins.PluginInterface):
 
         # walk the process list and report the arguments
         for task in tasks:
-            pid = task.pid
+            user_pid = task.tgid
 
             try:
-                ppid = task.parent.pid
+                user_ppid = task.parent.tgid
             except exceptions.InvalidAddressException:
-                ppid = 0
+                user_ppid = 0
 
             name = utility.array_to_string(task.comm)
 
             args = self._get_command_line_args(task, name)
 
-            yield (0, (pid, ppid, name, args))
+            yield (0, (user_pid, user_ppid, name, args))
 
     def run(self):
         filter_func = pslist.PsList.create_pid_filter(self.config.get("pid", None))

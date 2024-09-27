@@ -82,9 +82,10 @@ class VmaYaraScan(interfaces.plugins.PluginInterface):
                                 )
                     else:
                         for offset, name, value in match.strings:
+                            user_pid = task.tgid
                             yield 0, (
                                 format_hints.Hex(offset + start),
-                                task.tgid,
+                                user_pid,
                                 match.rule,
                                 name,
                                 value,

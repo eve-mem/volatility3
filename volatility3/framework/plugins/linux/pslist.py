@@ -92,9 +92,9 @@ class PsList(interfaces.plugins.PluginInterface):
         Returns:
             A tuple with the fields to show in the plugin output.
         """
-        pid = task.tgid
-        tid = task.pid
-        ppid = task.parent.tgid if task.parent else 0
+        user_pid = task.tgid
+        user_tid = task.pid
+        user_ppid = task.parent.tgid if task.parent else 0
         name = utility.array_to_string(task.comm)
         if decorate_comm:
             if task.is_kernel_thread:
@@ -102,7 +102,7 @@ class PsList(interfaces.plugins.PluginInterface):
             elif task.is_user_thread:
                 name = f"{{{name}}}"
 
-        task_fields = (task.vol.offset, pid, tid, ppid, name)
+        task_fields = (task.vol.offset, user_pid, user_tid, user_ppid, name)
         return task_fields
 
     def _get_file_output(self, task: interfaces.objects.ObjectInterface) -> str:
@@ -177,13 +177,15 @@ class PsList(interfaces.plugins.PluginInterface):
             else:
                 file_output = "Disabled"
 
-            offset, pid, tid, ppid, name = self.get_task_fields(task, decorate_comm)
+            offset, user_pid, user_tid, user_ppid, name = self.get_task_fields(
+                task, decorate_comm
+            )
 
             yield 0, (
                 format_hints.Hex(offset),
-                pid,
-                tid,
-                ppid,
+                user_pid,
+                user_tid,
+                user_ppid,
                 name,
                 file_output,
             )

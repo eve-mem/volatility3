@@ -20,7 +20,7 @@ class PIDHashTable(plugins.PluginInterface):
 
     _required_framework_version = (2, 0, 0)
 
-    _version = (1, 0, 1)
+    _version = (1, 0, 2)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -229,8 +229,9 @@ class PIDHashTable(plugins.PluginInterface):
         if not pid_func:
             vollog.error("Cannot determine which PID hash table this kernel is using")
             return
-
-        yield from sorted(pid_func(), key=lambda t: (t.tgid, t.pid))
+        user_pid = t.tgid
+        user_tid = t.pid
+        yield from sorted(pid_func(), key=lambda t: (user_pid, user_tid))
 
     def _generator(
         self, decorate_comm: bool = False

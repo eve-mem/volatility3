@@ -21,7 +21,7 @@ class Maps(plugins.PluginInterface):
     """Lists all memory maps for all processes."""
 
     _required_framework_version = (2, 0, 0)
-    _version = (1, 0, 0)
+    _version = (1, 0, 1)
     MAXSIZE_DEFAULT = 1024 * 1024 * 1024  # 1 Gb
 
     @classmethod
@@ -226,10 +226,11 @@ class Maps(plugins.PluginInterface):
                         if file_handle:
                             file_handle.close()
                             file_output = file_handle.preferred_filename
+                user_pid = task.tgid
                 yield (
                     0,
                     (
-                        task.pid,
+                        user_pid,
                         name,
                         format_hints.Hex(vma.vm_start),
                         format_hints.Hex(vma.vm_end),

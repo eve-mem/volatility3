@@ -22,7 +22,7 @@ class SockHandlers(interfaces.configuration.VersionableInterface):
 
     _required_framework_version = (2, 0, 0)
 
-    _version = (2, 0, 0)
+    _version = (2, 0, 1)
 
     def __init__(self, vmlinux, task):
         self._vmlinux = vmlinux
@@ -615,11 +615,11 @@ class Sockstat(plugins.PluginInterface):
                 if extended
                 else NotAvailableValue()
             )
-
+            user_pid = task.tgid
             fields = (
                 netns_id,
                 task_comm,
-                task.pid,
+                user_pid,
                 fd_num,
                 format_hints.Hex(sock.vol.offset),
                 family,
