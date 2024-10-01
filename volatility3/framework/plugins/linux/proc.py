@@ -21,7 +21,7 @@ class Maps(plugins.PluginInterface):
     """Lists all memory maps for all processes."""
 
     _required_framework_version = (2, 0, 0)
-    _version = (1, 0, 1)
+    _version = (1, 1, 0)
     MAXSIZE_DEFAULT = 1024 * 1024 * 1024  # 1 Gb
 
     @classmethod
