@@ -48,10 +48,12 @@ class Malfind(interfaces.plugins.PluginInterface):
 
         proc_layer = self.context.layers[proc_layer_name]
 
+        user_pid = task.tgid
+        user_tid = task.pid
         for vma in task.mm.get_vma_iter():
             vma_name = vma.get_name(self.context, task)
             vollog.debug(
-                f"Injections : processing PID {task.pid} : VMA {vma_name} : {hex(vma.vm_start)}-{hex(vma.vm_end)}"
+                f"Injections : processing PID {user_pid} : TID {user_tid} : VMA {vma_name} : {hex(vma.vm_start)}-{hex(vma.vm_end)}"
             )
             if (
                 vma.is_suspicious(proc_layer)
