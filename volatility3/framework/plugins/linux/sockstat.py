@@ -22,7 +22,7 @@ class SockHandlers(interfaces.configuration.VersionableInterface):
 
     _required_framework_version = (2, 0, 0)
 
-    _version = (2, 0, 1)
+    _version = (2, 0, 0)
 
     def __init__(self, vmlinux, task):
         self._vmlinux = vmlinux
