@@ -8,7 +8,7 @@ import datetime
 import struct
 from typing import List
 
-from volatility3.framework import constants, renderers, symbols, interfaces
+from volatility3.framework import constants, renderers, symbols, interfaces, exceptions
 from volatility3.framework.configuration import requirements
 from volatility3.framework.interfaces import plugins
 from volatility3.framework.layers import scanners
@@ -22,7 +22,7 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
     """Recovers bash command history from memory."""
 
     _required_framework_version = (2, 0, 0)
-    _version = (1, 0, 2)
+    _version = (1, 0, 3)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -121,10 +121,26 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
                     if hist.is_valid():
                         history_entries.append(hist)
 
-            for hist in sorted(history_entries, key=lambda x: x.get_time_as_integer()):
+            # TODO: Ensure list of history_entries is sorted by time before merging
+            for hist in history_entries:
+                try:
+                    pid = task.pid
+                except exceptions.InvalidAddressException:
+                    pid = renderers.NotAvailableValue()
+
+                try:
+                    time_object = hist.get_time_object()
+                except exceptions.InvalidAddressException:
+                    time_object = renderers.NotAvailableValue()
+
+                try:
+                    command = hist.get_command()
+                except exceptions.InvalidAddressException:
+                    command = renderers.NotAvailableValue()
+
                 yield (
                     0,
-                    (task.pid, task_name, hist.get_time_object(), hist.get_command()),
+                    (pid, task_name, time_object, command),
                 )
 
     def run(self):
