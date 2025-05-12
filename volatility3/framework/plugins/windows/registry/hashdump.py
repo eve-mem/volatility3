@@ -21,7 +21,7 @@ vollog = logging.getLogger(__name__)
 class Hashdump(interfaces.plugins.PluginInterface):
     """Dumps user hashes from memory"""
 
-    _required_framework_version = (2, 0, 0)
+    _required_framework_version = (2, 1, 0)
     _version = (1, 1, 1)
 
     @classmethod
@@ -34,6 +34,9 @@ class Hashdump(interfaces.plugins.PluginInterface):
             ),
             requirements.VersionRequirement(
                 name="hivelist", component=hivelist.HiveList, version=(2, 0, 0)
+            ),
+            requirements.StringRequirement(
+                name="hbootkey", description="hbootkey as hex", optional=True
             ),
         ]
 
@@ -595,14 +598,21 @@ class Hashdump(interfaces.plugins.PluginInterface):
 
     # replaces the dump_hashes method in vol2
     def _generator(
-        self, syshive: registry_layer.RegistryHive, samhive: registry_layer.RegistryHive
+        self,
+        syshive: registry_layer.RegistryHive,
+        samhive: registry_layer.RegistryHive,
+        user_hbootkey: str,
     ):
         if syshive is None:
             vollog.debug("SYSTEM address is None: No system hive found")
         if samhive is None:
             vollog.debug("SAM address is None: No SAM hive found")
-        bootkey = self.get_bootkey(syshive)
-        hbootkey = self.get_hbootkey(samhive, bootkey)
+        if user_hbootkey:
+            # TODO: catch errors wehre user hbootkey is not hex
+            hbootkey = bytes.fromhex(user_hbootkey)
+        else:
+            bootkey = self.get_bootkey(syshive)
+            hbootkey = self.get_hbootkey(samhive, bootkey)
         if hbootkey:
             for user in self.get_user_keys(samhive):
                 ret = self.get_user_hashes(user, samhive, hbootkey)
@@ -626,6 +636,7 @@ class Hashdump(interfaces.plugins.PluginInterface):
 
     def run(self):
         offset = self.config.get("offset", None)
+        user_hbootkey = self.config.get("hbootkey", None)
         syshive = None
         samhive = None
         for hive in hivelist.HiveList.list_hives(
@@ -641,5 +652,5 @@ class Hashdump(interfaces.plugins.PluginInterface):
 
         return renderers.TreeGrid(
             [("User", str), ("rid", int), ("lmhash", str), ("nthash", str)],
-            self._generator(syshive, samhive),
+            self._generator(syshive, samhive, user_hbootkey),
         )
