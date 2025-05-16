@@ -4,25 +4,30 @@
 """A module containing a plugin that recovers bash command history
 from bash process memory."""
 
+import logging
+import random
+import string
 import datetime
 import struct
 from typing import List
 
-from volatility3.framework import constants, renderers, symbols, interfaces
+from volatility3.framework import constants, renderers, symbols, interfaces, exceptions
 from volatility3.framework.configuration import requirements
 from volatility3.framework.interfaces import plugins
 from volatility3.framework.layers import scanners
 from volatility3.framework.objects import utility
 from volatility3.framework.symbols.linux import bash
 from volatility3.plugins import timeliner
-from volatility3.plugins.linux import pslist
+from volatility3.plugins.linux import pslist, psscan
+
+vollog = logging.getLogger(__name__)
 
 
 class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
     """Recovers bash command history from memory."""
 
     _required_framework_version = (2, 0, 0)
-    _version = (1, 0, 2)
+    _version = (1, 1, 0)
 
     @classmethod
     def get_requirements(cls) -> List[interfaces.configuration.RequirementInterface]:
@@ -56,9 +61,14 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 description="Process IDs to include (all other processes are excluded)",
                 optional=True,
             ),
+            requirements.BooleanRequirement(
+                name="scan",
+                description="Scan for processes rather than using psslit (Will take much longer)",
+                optional=True,
+            ),
         ]
 
-    def _generator(self, tasks):
+    def _generator(self, tasks, scan):
         vmlinux = self.context.modules[self.config["kernel"]]
         is_32bit = not symbols.symbol_table_is_64bit(
             context=self.context, symbol_table_name=vmlinux.symbol_table_name
@@ -83,11 +93,48 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
             if task_name not in ["bash", "sh", "dash"]:
                 continue
 
-            proc_layer_name = task.add_process_layer()
-            if not proc_layer_name:
-                continue
+            if scan:
+                # construct process layer for the scanned task object
+                # TODO: would be better to make add_process_layer work with native_layer_name
+                kernel_layer = self.context.layers[vmlinux.layer_name]
+                bash_config = kernel_layer.build_configuration()
+                try:
+                    pgd_physical_offset, mem_layer_name = kernel_layer.translate(
+                        task.mm.pgd
+                    )
+                except exceptions.InvalidAddressException:
+                    # we cannot build a process layer without a pgd
+                    continue
+                bash_config["page_map_offset"] = pgd_physical_offset
+                bash_config["memory_layer"] = mem_layer_name
+                preferred_name = "bash_process_layer"
+                random_prefix = "".join(
+                    random.SystemRandom().choice(string.ascii_uppercase + string.digits)
+                    for _ in range(8)
+                )
+                config_prefix = interfaces.configuration.path_join(
+                    "temporary", "_" + random_prefix
+                )
+                if preferred_name in self.context.layers:
+                    preferred_name = self.context.layers.free_layer_name(
+                        prefix=preferred_name
+                    )
+                # Set the new configuration and construct the layer
+                config_path = interfaces.configuration.path_join(
+                    config_prefix, preferred_name
+                )
+                self.context.config.splice(config_path, bash_config)
+                proc_layer = kernel_layer.__class__(
+                    self.context, config_path=config_path, name=preferred_name
+                )
+                self.context.layers.add_layer(proc_layer)
+                proc_layer_name = proc_layer.name
+            else:
+                proc_layer_name = task.add_process_layer()
+                if not proc_layer_name:
+                    continue
 
-            proc_layer = self.context.layers[proc_layer_name]
+                proc_layer = self.context.layers[proc_layer_name]
 
             bang_addrs = []
 
@@ -105,7 +152,6 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 bang_addrs.append(struct.pack(pack_format, address))
 
             history_entries = []
-
             if bang_addrs:
                 for address, _ in proc_layer.scan(
                     self.context,
@@ -129,7 +175,20 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
 
     def run(self):
         filter_func = pslist.PsList.create_pid_filter(self.config.get("pid", None))
-
+        scan = self.config.get("scan", None)
+        if scan:
+            vmlinux_module_name = self.config["kernel"]
+            vmlinux = self.context.modules[vmlinux_module_name]
+            kernel_layer_name = vmlinux.layer_name
+            tasks = psscan.PsScan.scan_tasks(
+                self.context,
+                vmlinux_module_name,
+                kernel_layer_name,
+            )
+        else:
+            tasks = pslist.PsList.list_tasks(
+                self.context, self.config["kernel"], filter_func=filter_func
+            )
         return renderers.TreeGrid(
             [
                 ("PID", int),
@@ -137,11 +196,7 @@ class Bash(plugins.PluginInterface, timeliner.TimeLinerInterface):
                 ("CommandTime", datetime.datetime),
                 ("Command", str),
             ],
-            self._generator(
-                pslist.PsList.list_tasks(
-                    self.context, self.config["kernel"], filter_func=filter_func
-                )
-            ),
+            self._generator(tasks, scan),
         )
 
     def generate_timeline(self):
