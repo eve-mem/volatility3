@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from intervaltree import IntervalTree
 from typing import Generator
 
 from volatility3.framework import constants, exceptions, interfaces, renderers
@@ -15,54 +15,6 @@ from volatility3.framework.renderers import format_hints
 from volatility3.plugins.windows import pslist
 
 vollog = logging.getLogger(__name__)
-
-
-@dataclass
-class MappingNode:
-    physical_addr_start: int
-    physical_addr_end: int
-    virtual_addr_start: int
-    virtual_addr_end: int
-    process_id: int | str
-    region: str
-
-
-@dataclass
-class MappingTree:
-    root: MappingNode | None = None
-    left: MappingTree | None = None
-    right: MappingTree | None = None
-
-    def add(self, node: MappingNode, depth: int = 0) -> None:
-        # Iteratively add to avoid recursion issues
-        if not isinstance(node, MappingNode):
-            raise TypeError
-        parent_node: MappingTree | None = self
-        while parent_node is not None:
-            if parent_node.root is None:
-                parent_node.root = node
-                parent_node = None
-            elif node.physical_addr_start < parent_node.root.physical_addr_start:
-                if parent_node.left is None:
-                    parent_node.left = MappingTree(node)
-                    parent_node = None
-                else:
-                    parent_node = parent_node.left
-            else:
-                if parent_node.right is None:
-                    parent_node.right = MappingTree(node)
-                    parent_node = None
-                else:
-                    parent_node = parent_node.right
-
-    def at(self, point):
-        if self.root:
-            if self.root.physical_addr_start <= point <= self.root.physical_addr_end:
-                yield self.root
-            if point < self.root.physical_addr_start and self.left:
-                yield from self.left.at(point)
-            elif self.right:
-                yield from self.right.at(point)
 
 
 class Strings(interfaces.plugins.PluginInterface):
@@ -133,9 +85,9 @@ class Strings(interfaces.plugins.PluginInterface):
         revmap_tree = self.generate_mapping(
             self.context,
             kernel.layer_name,
-            kernel.symbol_table_name,
             progress_callback=self._progress_callback,
             pid_list=self.config["pid"],
+            kernel_module_name=self.config["kernel"],
         )
 
         _last_prog: float = 0
@@ -146,17 +98,18 @@ class Strings(interfaces.plugins.PluginInterface):
             line_count += 1
 
             matched_region = False
-            for node in revmap_tree.at(phys_offset):
+            for mapped_region in revmap_tree.at(phys_offset):
                 matched_region = True
 
-                region_offset = phys_offset - node.physical_addr_start
-                offset = node.virtual_addr_start + region_offset
+                region_offset = phys_offset - mapped_region.begin
+                item = mapped_region.data
+                offset = item.get("offset") + region_offset
                 yield (
                     0,
                     (
                         str(string.strip(), "latin-1"),
-                        node.region,
-                        node.process_id,
+                        item.get("region", "Unallocated"),
+                        item.get("pid", -1),
                         format_hints.Hex(phys_offset),
                         format_hints.Hex(offset),
                     ),
@@ -196,17 +149,17 @@ class Strings(interfaces.plugins.PluginInterface):
         cls,
         context: interfaces.context.ContextInterface,
         layer_name: str,
-        symbol_table: str,
         progress_callback: constants.ProgressCallback = None,
         pid_list: list[int] | None = None,
-    ) -> MappingTree:
+        kernel_module_name: str = "",
+    ) -> IntervalTree:
         """Creates a reverse mapping between virtual addresses and physical
         addresses.
 
         Args:
             context: the context for the method to run against
             layer_name: the name of the windows intel layer to be scanned
-            symbol_table: the name of the kernel symbol table
+            kernel_module_name: the name of the kernel module
             progress_callback: an optional callable to display progress
             pid_list: a lit of process IDs to consider when generating the reverse map
 
@@ -214,7 +167,7 @@ class Strings(interfaces.plugins.PluginInterface):
             A mapping of virtual offsets to strings and physical offsets
         """
         filter = pslist.PsList.create_pid_filter(pid_list)
-        revmap_tree = MappingTree()
+        revmap_tree = IntervalTree()
 
         # start with kernel mappings
         layer: intel.Intel = context.layers[layer_name]
@@ -226,30 +179,28 @@ class Strings(interfaces.plugins.PluginInterface):
             ):
                 (
                     virt_offset,
-                    virt_size,
+                    _virt_size,
                     phy_offset,
                     phy_mapping_size,
                     _phy_layer_name,
                 ) = mapval
 
-                node = MappingNode(
+                revmap_tree.addi(
                     phy_offset,
-                    phy_offset + phy_mapping_size,
-                    virt_offset,
-                    virt_offset + virt_size,
-                    -1,
-                    "Kernel",
+                    phy_offset + phy_mapping_size,  # end of
+                    {"region": "Kernel", "pid": -1, "offset": virt_offset},
                 )
-                revmap_tree.add(node)
 
                 if progress_callback:
                     progress_callback(
                         (virt_offset * 100) / layer.maximum_address,
-                        f"Creating custom tree mapping for kernel at offset : {virt_offset:x}",
+                        f"Creating tree mapping for kernel at offset : {virt_offset:x}",
                     )
 
         # now process normal processes, ignoring kernel addrs
-        for process in pslist.PsList.list_processes(context, layer_name, symbol_table):
+        for process in pslist.PsList.list_processes(
+            context, kernel_module_name, filter
+        ):
             if not filter(process):
                 proc_id = "Unknown"
                 try:
@@ -269,25 +220,25 @@ class Strings(interfaces.plugins.PluginInterface):
                     ):
                         (
                             virt_offset,
-                            virt_size,
+                            _virt_size,
                             phy_offset,
                             phy_mapping_size,
                             _phy_layer_name,
                         ) = mapval
 
-                        node = MappingNode(
+                        revmap_tree.addi(
                             phy_offset,
                             phy_offset + phy_mapping_size,
-                            virt_offset,
-                            virt_offset + virt_size,
-                            process_id=proc_id,
-                            region="Process",
+                            {
+                                "region": "Process",
+                                "pid": proc_id,
+                                "offset": virt_offset,
+                            },
                         )
-                        revmap_tree.add(node)
 
                         if progress_callback:
                             progress_callback(
                                 (virt_offset * 100) / max_proc_addr,
-                                f"Creating custom tree mapping for task {proc_id}: {virt_offset:x}",
+                                f"Creating tree mapping for task {proc_id}: {virt_offset:x}",
                             )
         return revmap_tree
